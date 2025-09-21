@@ -1,0 +1,126 @@
+name: CI/CD for Develop & Main Branches
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  SOLUTION_FILE: Subscription.sln
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: Build
+        run: dotnet build ${{ env.SOLUTION_FILE }} --no-restore
+
+      - name: Test
+        run: dotnet test ${{ env.SOLUTION_FILE }} --no-build
+
+  deploy-to-develop:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: 
+      name: develop
+      url: https://subapp-dev.azurewebsites.net
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      #- name: Deploy to Azure App Service (Develop)
+        #uses: azure/webapps-deploy@v2
+        #with:
+        #  app-name: 'subapp-dev'
+        #  publish-profile: ${{ secrets.AZURE_DEV_CREDENTIALS }}
+        #  package: .
+
+      - name: Wait 30s for deployment to stabilize
+        run: sleep 30
+
+      # - name: Ping Health Endpoint (Develop)
+      #   id: health_check_dev
+      #   run: |
+      #     RESPONSE_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://myapp-dev.azurewebsites.net/health)
+      #     echo "Health check response: $RESPONSE_CODE"
+      #     if [ "$RESPONSE_CODE" != "200" ]; then
+      #       echo "❌ Health check failed!"
+      #       exit 1
+      #     else
+      #       echo "✅ Health check passed!"
+      #     fi
+
+      # - name: Notify Failure (Optional)
+      #   if: failure()
+      #   run: |
+      #     echo "🚨 Deployment to DEVELOP failed health check. Investigate immediately."
+
+  deploy-to-production:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: 
+      name: production
+      url: https://subapp-prod.azurewebsites.net
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # - name: Deploy to Azure App Service (Production)
+      #   id: deploy_prod
+      #   uses: azure/webapps-deploy@v2
+      #   with:
+      #     app-name: 'subapp-prod'
+      #     publish-profile: ${{ secrets.AZURE_PROD_CREDENTIALS }}
+      #     package: .
+
+      - name: Wait 30s for deployment to stabilize
+        run: sleep 30
+
+          echo "✅ Deployment successful!"
+      # - name: Ping Health Endpoint (Production)
+      #   id: health_check_prod
+      #   run: |
+      #     RESPONSE_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://subapp-prod.azurewebsites.net/health)
+      #     echo "Health check response: $RESPONSE_CODE"
+      #     if [ "$RESPONSE_CODE" != "200" ]; then
+      #       echo "❌ Health check failed!"
+      #       exit 1
+      #     else
+      #       echo "✅ Health check passed!"
+      #     fi
+
+      # - name: Auto-Rollback on Failure
+      #   if: failure()
+      #   uses: azure/webapps-deploy@v2
+      #   with:
+      #     app-name: 'subapp-prod'
+      #     publish-profile: ${{ secrets.AZURE_PROD_CREDENTIALS }}
+          # Deploy previous successful deployment (slot or zip)
+          # ⚠️ Simple rollback: redeploy last known good ZIP (you need to save it)
+          # → For true rollback, use Deployment Slots (see Bonus below)
+          #package: ./previous-deploy.zip  # ❗ You must generate/save this
+
+      # - name: Notify Failure + Rollback
+      #   if: failure()
+      #   run: |
+      #     echo "🚨 Deployment to PRODUCTION failed health check. Attempted rollback."
+      #     # Optionally notify Slack/email
